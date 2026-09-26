@@ -1,5 +1,7 @@
 # go-htmx-dad-joke
 
+[![CI](https://github.com/dykstrom/go-htmx-dad-joke/actions/workflows/ci.yml/badge.svg)](https://github.com/dykstrom/go-htmx-dad-joke/actions/workflows/ci.yml)
+
 A Go/HTMX REST client for icanhazdadjoke.com
 
 ## Overview
