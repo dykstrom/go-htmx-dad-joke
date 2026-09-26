@@ -23,6 +23,7 @@ go-htmx-dad-joke is a web app that searches the icanhazdadjoke.com REST API for 
 | `internal/web/templates/` | `html/template` files. `layout.html` is the page skeleton |
 | `internal/web/static/` | Files served under `/static/`, including vendored third-party files |
 | `internal/dadjoke/` | Client for the icanhazdadjoke.com API, with `Random` and `Search` |
+| `.github/workflows/` | `ci.yml` runs the checks below on every push and pull request |
 | `docs/` | Durable project context. Sub-folder layout below shows where each kind of doc goes. |
 
 ```
@@ -40,3 +41,4 @@ docs/
 |------|---------|
 | Run the app | `go run ./cmd/server` (listens on `PORT`, default `8080`) |
 | Live API test | `DADJOKE_LIVE=1 go test ./internal/dadjoke -run Live -v` calls the real icanhazdadjoke.com. `go test ./...` skips it |
+| Checks that CI runs | `gofmt -l .` must print nothing, then `go vet ./...` and `go test -race ./...` |
