@@ -1,11 +1,15 @@
 {{define "main"}}
 <h1>Dad jokes</h1>
 <p>Search for a dad joke, or leave the field empty for a random one.</p>
-<form action="/joke" method="get" hx-get="/joke" hx-target="#result" hx-indicator="#spinner" hx-disable="#search">
+<search>
+<form action="/joke" method="get" hx-get="/joke" hx-target="#result" hx-indicator="#spinner" hx-disable="#search" hx-on:htmx:finally:request="this.elements.term.focus()">
     <label for="term">Search word</label>
-    <input type="search" id="term" name="term" value="{{.Term}}">
-    <button type="submit" id="search">Search</button>
+    <div role="group">
+        <input type="search" id="term" name="term" value="{{.Term}}" autofocus>
+        <button type="submit" id="search">Search</button>
+    </div>
 </form>
+</search>
 <p id="spinner" class="htmx-indicator" aria-busy="true">Fetching a joke…</p>
-<div id="result">{{with .Result}}{{template "result" .}}{{end}}</div>
+<div id="result" aria-live="polite">{{with .Result}}{{template "result" .}}{{end}}</div>
 {{end}}

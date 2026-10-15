@@ -25,6 +25,16 @@ The client times out after 5 seconds, and HTMX 4 gives up after 60 seconds. A lo
 
 During a request, the form shows `#spinner` through `hx-indicator` and disables the Search button through `hx-disable="#search"`. The form uses an id selector because nobody has tested the `find button` form of `hx-disable` in HTMX 4.0.0.
 
+When a visitor clicks Search, the button is disabled, and the browser drops focus to the page body. The form's `hx-on:htmx:finally:request="this.elements.term.focus()"` puts focus back in the search field. HTMX 4.0.0 fires `htmx:finally:request` after every request, also when `fetch()` fails. `htmx:after:request` fires only when a response arrives. The field also has `autofocus`, so a visitor can type as soon as the page loads.
+
+`#result` has `aria-live="polite"`, so screen readers announce each new joke or message. Nobody has tested this with a screen reader yet.
+
+## Styling
+
+`static/app.css` holds the app's own styles. The layout loads it after `pico.min.css`, so its rules win. It sets no colours of its own and uses Pico variables such as `--pico-muted-color` instead. Pico switches those variables with the system light or dark setting, so the page follows that setting with no theme switch.
+
+`result.html` puts a joke in `<article class="joke">`, which Pico draws as a card, and a message in `<p class="message">`. `app.css` styles both classes. New content in `#result` fades in, except when the visitor's system asks for reduced motion.
+
 ## Static files
 
 `GET /static/` serves the embedded `static/` folder with `http.FileServerFS`. The `noDirListing` wrapper returns 404 for folder paths such as `/static/`, which `http.FileServerFS` would otherwise answer with a file listing.

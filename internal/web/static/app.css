@@ -1,0 +1,39 @@
+/* App styles on top of Pico CSS (ADR 0002). Colours come from Pico's
+   variables, so the page follows the system light or dark setting. */
+
+main.container {
+    max-width: 40rem;
+}
+
+#result .joke p {
+    margin-bottom: 0;
+    font-size: 1.5rem;
+    line-height: 1.4;
+}
+
+#result .message {
+    color: var(--pico-muted-color);
+}
+
+/* Fade in each new result, whether HTMX swapped it in or the page loaded
+   with it. */
+#result > * {
+    animation: result-in 250ms ease-out;
+}
+
+@keyframes result-in {
+    from {
+        opacity: 0;
+        transform: translateY(0.5rem);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #result > * {
+        animation: none;
+    }
+}

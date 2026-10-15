@@ -135,14 +135,20 @@ func TestIndexPage(t *testing.T) {
 	}
 	for _, want := range []string{
 		`<!doctype html>`,
-		`<link rel="stylesheet" href="/static/pico.min.css">`,
+		`<meta name="color-scheme" content="light dark">`,
+		// app.css comes after Pico, so its rules win.
+		"<link rel=\"stylesheet\" href=\"/static/pico.min.css\">\n    <link rel=\"stylesheet\" href=\"/static/app.css\">",
 		`<script src="/static/htmx.min.js"></script>`,
 		`<h1>Dad jokes</h1>`,
-		`<form action="/joke" method="get" hx-get="/joke" hx-target="#result" hx-indicator="#spinner" hx-disable="#search">`,
-		`<input type="search" id="term" name="term" value="">`,
+		"<search>\n<form ",
+		`<form action="/joke" method="get" hx-get="/joke" hx-target="#result" hx-indicator="#spinner" hx-disable="#search" hx-on:htmx:finally:request="this.elements.term.focus()">`,
+		`<label for="term">Search word</label>`,
+		`<div role="group">`,
+		`<input type="search" id="term" name="term" value="" autofocus>`,
 		`<button type="submit" id="search">Search</button>`,
+		"</form>\n</search>",
 		`<p id="spinner" class="htmx-indicator" aria-busy="true">Fetching a joke…</p>`,
-		`<div id="result"></div>`,
+		`<div id="result" aria-live="polite"></div>`,
 	} {
 		if !bytes.Contains(body, []byte(want)) {
 			t.Errorf("body does not contain %q", want)
@@ -150,23 +156,27 @@ func TestIndexPage(t *testing.T) {
 	}
 }
 
-func TestPicoStylesheet(t *testing.T) {
-	srv, _ := newTestServer(t, &fakeJokes{})
-	want, err := staticFS.ReadFile("static/pico.min.css")
-	if err != nil {
-		t.Fatalf("read embedded file: %v", err)
-	}
+func TestStylesheets(t *testing.T) {
+	for _, name := range []string{"pico.min.css", "app.css"} {
+		t.Run(name, func(t *testing.T) {
+			srv, _ := newTestServer(t, &fakeJokes{})
+			want, err := staticFS.ReadFile("static/" + name)
+			if err != nil {
+				t.Fatalf("read embedded file: %v", err)
+			}
 
-	resp, body := get(t, srv, "/static/pico.min.css")
+			resp, body := get(t, srv, "/static/"+name)
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
-	}
-	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/css") {
-		t.Errorf("Content-Type = %q, want text/css", ct)
-	}
-	if !bytes.Equal(body, want) {
-		t.Errorf("body differs from the embedded file (%d bytes, want %d)", len(body), len(want))
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+			}
+			if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/css") {
+				t.Errorf("Content-Type = %q, want text/css", ct)
+			}
+			if !bytes.Equal(body, want) {
+				t.Errorf("body differs from the embedded file (%d bytes, want %d)", len(body), len(want))
+			}
+		})
 	}
 }
 
@@ -214,7 +224,7 @@ func TestJokeSearchFragment(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-	if got := string(body); got != "<p>A cat joke.</p>" {
+	if got := string(body); got != `<article class="joke"><p>A cat joke.</p></article>` {
 		t.Errorf("body = %q, want only the result fragment", got)
 	}
 	if vary := resp.Header.Values("Vary"); !slices.Contains(vary, "HX-Request") {
@@ -257,8 +267,8 @@ func TestJokeFullPage(t *testing.T) {
 	}
 	for _, want := range []string{
 		`<!doctype html>`,
-		`<input type="search" id="term" name="term" value="cat">`,
-		`<div id="result"><p>A cat joke.</p></div>`,
+		`<input type="search" id="term" name="term" value="cat" autofocus>`,
+		`<div id="result" aria-live="polite"><article class="joke"><p>A cat joke.</p></article></div>`,
 	} {
 		if !bytes.Contains(body, []byte(want)) {
 			t.Errorf("body does not contain %q", want)
@@ -366,8 +376,8 @@ func TestJokeErrorFullPage(t *testing.T) {
 			}
 			for _, want := range []string{
 				`<!doctype html>`,
-				`<input type="search" id="term" name="term" value="cat">`,
-				`<div id="result"><p class="message">` + tc.message + `</p></div>`,
+				`<input type="search" id="term" name="term" value="cat" autofocus>`,
+				`<div id="result" aria-live="polite"><p class="message">` + tc.message + `</p></div>`,
 			} {
 				if !bytes.Contains(body, []byte(want)) {
 					t.Errorf("body does not contain %q", want)
