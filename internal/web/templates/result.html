@@ -1,1 +1,1 @@
-{{define "result"}}<p>{{.Text}}</p>{{end}}
+{{define "result"}}{{if .Joke}}<p>{{.Joke.Text}}</p>{{else}}<p class="message">{{.Message}}</p>{{end}}{{end}}

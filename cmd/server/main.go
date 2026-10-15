@@ -29,7 +29,7 @@ func main() {
 }
 
 func run() error {
-	handler, err := web.New(dadjoke.New(dadjoke.DefaultBaseURL))
+	handler, err := web.New(dadjoke.New(dadjoke.DefaultBaseURL), slog.Default())
 	if err != nil {
 		return err
 	}

@@ -5,10 +5,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -46,15 +51,43 @@ func (f *fakeJokes) Search(_ context.Context, term string) (dadjoke.Joke, error)
 	return f.joke, f.err
 }
 
-func newTestServer(t *testing.T, jokes JokeSource) *httptest.Server {
+// logBuffer collects log output. The server writes to it from its own
+// goroutines, so it locks around each access.
+type logBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *logBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *logBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// newTestHandler returns the app's handler and the buffer that its log
+// goes to.
+func newTestHandler(t *testing.T, jokes JokeSource) (http.Handler, *logBuffer) {
 	t.Helper()
-	handler, err := New(jokes)
+	logs := &logBuffer{}
+	handler, err := New(jokes, slog.New(slog.NewTextHandler(logs, nil)))
 	if err != nil {
 		t.Fatalf("New() error: %v", err)
 	}
+	return handler, logs
+}
+
+func newTestServer(t *testing.T, jokes JokeSource) (*httptest.Server, *logBuffer) {
+	t.Helper()
+	handler, logs := newTestHandler(t, jokes)
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, logs
 }
 
 func get(t *testing.T, srv *httptest.Server, path string) (*http.Response, []byte) {
@@ -90,7 +123,7 @@ func getWithHeader(t *testing.T, srv *httptest.Server, path string, header http.
 }
 
 func TestIndexPage(t *testing.T) {
-	srv := newTestServer(t, &fakeJokes{})
+	srv, _ := newTestServer(t, &fakeJokes{})
 
 	resp, body := get(t, srv, "/")
 
@@ -105,9 +138,10 @@ func TestIndexPage(t *testing.T) {
 		`<link rel="stylesheet" href="/static/pico.min.css">`,
 		`<script src="/static/htmx.min.js"></script>`,
 		`<h1>Dad jokes</h1>`,
-		`<form action="/joke" method="get" hx-get="/joke" hx-target="#result">`,
+		`<form action="/joke" method="get" hx-get="/joke" hx-target="#result" hx-indicator="#spinner" hx-disable="#search">`,
 		`<input type="search" id="term" name="term" value="">`,
-		`<button type="submit">Search</button>`,
+		`<button type="submit" id="search">Search</button>`,
+		`<p id="spinner" class="htmx-indicator" aria-busy="true">Fetching a joke…</p>`,
 		`<div id="result"></div>`,
 	} {
 		if !bytes.Contains(body, []byte(want)) {
@@ -117,7 +151,7 @@ func TestIndexPage(t *testing.T) {
 }
 
 func TestPicoStylesheet(t *testing.T) {
-	srv := newTestServer(t, &fakeJokes{})
+	srv, _ := newTestServer(t, &fakeJokes{})
 	want, err := staticFS.ReadFile("static/pico.min.css")
 	if err != nil {
 		t.Fatalf("read embedded file: %v", err)
@@ -137,7 +171,7 @@ func TestPicoStylesheet(t *testing.T) {
 }
 
 func TestHTMXScript(t *testing.T) {
-	srv := newTestServer(t, &fakeJokes{})
+	srv, _ := newTestServer(t, &fakeJokes{})
 	want, err := staticFS.ReadFile("static/htmx.min.js")
 	if err != nil {
 		t.Fatalf("read embedded file: %v", err)
@@ -161,7 +195,7 @@ func TestHTMXScript(t *testing.T) {
 }
 
 func TestUnknownPathIsNotFound(t *testing.T) {
-	srv := newTestServer(t, &fakeJokes{})
+	srv, _ := newTestServer(t, &fakeJokes{})
 
 	for _, path := range []string{"/nope", "/static/nope.css", "/static/"} {
 		resp, _ := get(t, srv, path)
@@ -173,7 +207,7 @@ func TestUnknownPathIsNotFound(t *testing.T) {
 
 func TestJokeSearchFragment(t *testing.T) {
 	jokes := &fakeJokes{joke: dadjoke.Joke{ID: "J1", Text: "A cat joke."}}
-	srv := newTestServer(t, jokes)
+	srv, _ := newTestServer(t, jokes)
 
 	resp, body := getHTMX(t, srv, "/joke?term=cat")
 
@@ -195,7 +229,7 @@ func TestJokeBlankTermIsRandom(t *testing.T) {
 	for _, path := range []string{"/joke", "/joke?term=", "/joke?term=%20%20"} {
 		t.Run(path, func(t *testing.T) {
 			jokes := &fakeJokes{joke: dadjoke.Joke{ID: "R1", Text: "A random joke."}}
-			srv := newTestServer(t, jokes)
+			srv, _ := newTestServer(t, jokes)
 
 			resp, body := getHTMX(t, srv, path)
 
@@ -214,7 +248,7 @@ func TestJokeBlankTermIsRandom(t *testing.T) {
 
 func TestJokeFullPage(t *testing.T) {
 	jokes := &fakeJokes{joke: dadjoke.Joke{ID: "J1", Text: "A cat joke."}}
-	srv := newTestServer(t, jokes)
+	srv, _ := newTestServer(t, jokes)
 
 	resp, body := get(t, srv, "/joke?term=cat")
 
@@ -232,16 +266,160 @@ func TestJokeFullPage(t *testing.T) {
 	}
 }
 
-func TestJokeErrorIs500(t *testing.T) {
-	for _, err := range []error{dadjoke.ErrNoMatch, errors.New("boom")} {
-		t.Run(err.Error(), func(t *testing.T) {
-			srv := newTestServer(t, &fakeJokes{err: err})
+// secret is in the text of every fake error. A visitor must never see it.
+const secret = "secret-upstream-detail"
 
-			resp, _ := getHTMX(t, srv, "/joke?term=cat")
+// timeoutError is the kind of error that http.Client wraps when its
+// timeout runs out.
+type timeoutError struct{}
 
-			if resp.StatusCode != http.StatusInternalServerError {
-				t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusInternalServerError)
+func (timeoutError) Error() string   { return secret + ": Client.Timeout exceeded" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return true }
+
+// jokeErrorCase is an error from the JokeSource and the answer it gets.
+type jokeErrorCase struct {
+	name    string
+	err     error
+	status  int
+	message string   // the message in the body, as html/template escapes it
+	log     []string // text that the log must contain
+}
+
+// jokeErrorCases returns one case per kind of error, in the shapes that
+// dadjoke.Client returns.
+func jokeErrorCases() []jokeErrorCase {
+	syntaxErr := json.Unmarshal([]byte("<html>"), new(any))
+	return []jokeErrorCase{
+		{
+			name:    "no match",
+			err:     dadjoke.ErrNoMatch,
+			status:  http.StatusNotFound,
+			message: "No joke matches &#34;cat&#34;. Try another word, or leave the field empty for a random joke.",
+			log:     []string{`level=INFO msg="no joke matched" term=cat`},
+		},
+		{
+			name:    "API error status",
+			err:     &dadjoke.StatusError{StatusCode: http.StatusServiceUnavailable, Message: secret},
+			status:  http.StatusBadGateway,
+			message: "The joke service is having trouble right now. Please try again in a moment.",
+			log:     []string{`level=ERROR msg="get joke" term=cat kind=api_error status=503 error=`, secret},
+		},
+		{
+			name:    "invalid JSON",
+			err:     fmt.Errorf("dadjoke: decode response from /search (%s): %w", secret, syntaxErr),
+			status:  http.StatusBadGateway,
+			message: "The joke service is having trouble right now. Please try again in a moment.",
+			log:     []string{`level=ERROR msg="get joke" term=cat kind=api_error error=`, secret},
+		},
+		{
+			name: "network failure",
+			err: fmt.Errorf("dadjoke: GET /search: %w", &url.Error{
+				Op:  "Get",
+				URL: "https://" + secret + "/search",
+				Err: &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")},
+			}),
+			status:  http.StatusBadGateway,
+			message: "Could not reach the joke service. Please try again in a moment.",
+			log:     []string{`level=ERROR msg="get joke" term=cat kind=network error=`, secret},
+		},
+		{
+			name:    "timeout",
+			err:     fmt.Errorf("dadjoke: GET /search: %w", &url.Error{Op: "Get", URL: "https://example.com/search", Err: timeoutError{}}),
+			status:  http.StatusGatewayTimeout,
+			message: "The joke service took too long to answer. Please try again.",
+			log:     []string{`level=ERROR msg="get joke" term=cat kind=timeout error=`, secret},
+		},
+	}
+}
+
+func TestJokeErrorFragment(t *testing.T) {
+	for _, tc := range jokeErrorCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, logs := newTestServer(t, &fakeJokes{err: tc.err})
+
+			resp, body := getHTMX(t, srv, "/joke?term=cat")
+
+			if resp.StatusCode != tc.status {
+				t.Errorf("status = %d, want %d", resp.StatusCode, tc.status)
+			}
+			if want := `<p class="message">` + tc.message + `</p>`; string(body) != want {
+				t.Errorf("body = %q, want only %q", body, want)
+			}
+			if vary := resp.Header.Values("Vary"); !slices.Contains(vary, "HX-Request") {
+				t.Errorf("Vary = %q, want HX-Request", vary)
+			}
+			checkLog(t, logs.String(), tc.status != http.StatusNotFound, tc.log)
+		})
+	}
+}
+
+func TestJokeErrorFullPage(t *testing.T) {
+	for _, tc := range jokeErrorCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, _ := newTestServer(t, &fakeJokes{err: tc.err})
+
+			resp, body := get(t, srv, "/joke?term=cat")
+
+			if resp.StatusCode != tc.status {
+				t.Errorf("status = %d, want %d", resp.StatusCode, tc.status)
+			}
+			for _, want := range []string{
+				`<!doctype html>`,
+				`<input type="search" id="term" name="term" value="cat">`,
+				`<div id="result"><p class="message">` + tc.message + `</p></div>`,
+			} {
+				if !bytes.Contains(body, []byte(want)) {
+					t.Errorf("body does not contain %q", want)
+				}
+			}
+			if bytes.Contains(body, []byte(secret)) {
+				t.Errorf("body contains the error text %q", secret)
+			}
+			if vary := resp.Header.Values("Vary"); !slices.Contains(vary, "HX-Request") {
+				t.Errorf("Vary = %q, want HX-Request", vary)
 			}
 		})
 	}
+}
+
+// checkLog checks that log has one ERROR line if wantError is set and none
+// otherwise, and that it contains each string in want.
+func checkLog(t *testing.T, log string, wantError bool, want []string) {
+	t.Helper()
+	errorLines := strings.Count(log, "level=ERROR")
+	if wantError && errorLines != 1 || !wantError && errorLines != 0 {
+		t.Errorf("log has %d ERROR lines, want error = %v:\n%s", errorLines, wantError, log)
+	}
+	for _, w := range want {
+		if !strings.Contains(log, w) {
+			t.Errorf("log does not contain %q:\n%s", w, log)
+		}
+	}
+}
+
+func TestJokeNoMatchEscapesTerm(t *testing.T) {
+	srv, _ := newTestServer(t, &fakeJokes{err: dadjoke.ErrNoMatch})
+
+	_, body := getHTMX(t, srv, "/joke?term="+url.QueryEscape("<b>"))
+
+	if !bytes.Contains(body, []byte("No joke matches &#34;&lt;b&gt;&#34;.")) || bytes.Contains(body, []byte("<b>")) {
+		t.Errorf("body = %q, want the term escaped", body)
+	}
+}
+
+func TestJokeCancelledRequest(t *testing.T) {
+	handler, logs := newTestHandler(t, &fakeJokes{err: context.Canceled})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/joke?term=cat", nil)
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Body.Len() != 0 {
+		t.Errorf("body = %q, want none", rec.Body)
+	}
+	checkLog(t, logs.String(), false, []string{`level=INFO msg="request cancelled" term=cat`})
 }

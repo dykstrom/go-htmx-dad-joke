@@ -19,3 +19,10 @@
 - Such an endpoint MUST set `Vary: HX-Request` on every response.
 - A form that sends an HTMX request MUST also have `action` and `method`, so that it works without JavaScript.
 - Source: ticket 004 of this project, decided on 2026-10-15, so that a bookmarked URL or a browser without JavaScript still gets a working page.
+
+## Error responses
+
+- When an endpoint that HTMX calls cannot return its normal content, it MUST answer with an HTML fragment that holds a message for the visitor.
+- The status MUST match the failure: 4xx when the request cannot succeed, such as a search with no match, and 5xx when a service the app calls fails.
+- A response body MUST NOT contain the text of a Go error or of an answer from an upstream service. The server log MUST record those details instead.
+- Source: ticket 005 of this project, decided on 2026-10-15. HTMX 4 swaps 4xx and 5xx responses into the target, so the visitor sees the message while logs and tools still see the failure.

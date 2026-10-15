@@ -1,10 +1,11 @@
 {{define "main"}}
 <h1>Dad jokes</h1>
 <p>Search for a dad joke, or leave the field empty for a random one.</p>
-<form action="/joke" method="get" hx-get="/joke" hx-target="#result">
+<form action="/joke" method="get" hx-get="/joke" hx-target="#result" hx-indicator="#spinner" hx-disable="#search">
     <label for="term">Search word</label>
     <input type="search" id="term" name="term" value="{{.Term}}">
-    <button type="submit">Search</button>
+    <button type="submit" id="search">Search</button>
 </form>
-<div id="result">{{if .Joke}}{{template "result" .Joke}}{{end}}</div>
+<p id="spinner" class="htmx-indicator" aria-busy="true">Fetching a joke…</p>
+<div id="result">{{with .Result}}{{template "result" .}}{{end}}</div>
 {{end}}
