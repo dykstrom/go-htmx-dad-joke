@@ -1,4 +1,10 @@
 {{define "main"}}
 <h1>Dad jokes</h1>
 <p>Search for a dad joke, or leave the field empty for a random one.</p>
+<form action="/joke" method="get" hx-get="/joke" hx-target="#result">
+    <label for="term">Search word</label>
+    <input type="search" id="term" name="term" value="{{.Term}}">
+    <button type="submit">Search</button>
+</form>
+<div id="result">{{if .Joke}}{{template "result" .Joke}}{{end}}</div>
 {{end}}

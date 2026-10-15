@@ -12,3 +12,10 @@
 - Pages MUST load `pico.min.css` from `/static/`.
 - Custom CSS MUST go on top of Pico and MUST NOT replace it.
 - Source: [ADR 0002](../adr/0002-use-pico-css.md).
+
+## HTMX endpoints
+
+- An endpoint that HTMX calls MUST return only the HTML fragment when the request has `HX-Request: true`, and the full page otherwise.
+- Such an endpoint MUST set `Vary: HX-Request` on every response.
+- A form that sends an HTMX request MUST also have `action` and `method`, so that it works without JavaScript.
+- Source: ticket 004 of this project, decided on 2026-10-15, so that a bookmarked URL or a browser without JavaScript still gets a working page.

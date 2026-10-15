@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dykstrom/go-htmx-dad-joke/internal/dadjoke"
 	"github.com/dykstrom/go-htmx-dad-joke/internal/web"
 )
 
@@ -28,7 +29,7 @@ func main() {
 }
 
 func run() error {
-	handler, err := web.New()
+	handler, err := web.New(dadjoke.New(dadjoke.DefaultBaseURL))
 	if err != nil {
 		return err
 	}
