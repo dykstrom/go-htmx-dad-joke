@@ -2,7 +2,7 @@
 
 ## What is this
 
-go-htmx-dad-joke is a web app that searches the icanhazdadjoke.com REST API for dad jokes and shows the result. The UI has one search field, a button, and an output area. An empty search returns a random joke. The app is under construction. `README.md` describes the finished behaviour.
+go-htmx-dad-joke is a web app that searches the icanhazdadjoke.com REST API for dad jokes and shows one result. The UI has one search field, a button, and an output area. An empty search returns a random joke. When no joke matches or the API fails, the output area shows a message instead.
 
 ## Stack
 
@@ -18,11 +18,11 @@ go-htmx-dad-joke is a web app that searches the icanhazdadjoke.com REST API for 
 
 | Path | What's there |
 |------|-------------|
-| `cmd/server/` | The app's `main` package. Reads `PORT`, starts the server, and stops it on Ctrl-C |
+| `cmd/server/` | The app's `main` package. Reads `PORT` and starts the server |
 | `internal/web/` | HTTP handlers and routes. Embeds `templates/` and `static/` with `go:embed` (ADR 0001) |
 | `internal/web/templates/` | `html/template` files. `layout.html` is the page skeleton |
 | `internal/web/static/` | Files served under `/static/`, including vendored third-party files |
-| `internal/dadjoke/` | Client for the icanhazdadjoke.com API, with `Random` and `Search` |
+| `internal/dadjoke/` | Client for the icanhazdadjoke.com API, with `Search` |
 | `.github/workflows/` | `ci.yml` runs the checks below on every push and pull request |
 | `docs/` | Durable project context. Sub-folder layout below shows where each kind of doc goes. |
 

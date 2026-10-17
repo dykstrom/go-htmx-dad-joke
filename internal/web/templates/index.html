@@ -11,5 +11,5 @@
 </form>
 </search>
 <p id="spinner" class="htmx-indicator" aria-busy="true">Fetching a joke…</p>
-<div id="result" aria-live="polite">{{with .Result}}{{template "result" .}}{{end}}</div>
+<div id="result" aria-live="polite">{{if or .Joke .Message}}{{template "result" .}}{{end}}</div>
 {{end}}

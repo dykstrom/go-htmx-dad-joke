@@ -2,17 +2,10 @@
 
 `internal/dadjoke` calls the icanhazdadjoke.com REST API. Every request sends `Accept: application/json` and a `User-Agent` that names the app. Each request times out after 5 seconds.
 
-The API can report an error as HTTP 200 with a body such as `{"message":"...","status":404}`. The client decodes every body and checks its `status` field as well as the HTTP status. Either one other than 200 gives a `*StatusError`.
+`Search` returns a random joke from `/` for an empty or blank term. Otherwise it picks a random joke from all matches with two requests. It fetches page 1 of `/search` with `limit=1` to read `total_jokes`. Then it picks a random index and fetches that page, which holds exactly that joke.
 
-`Search` returns `Random` for an empty or blank term. Otherwise it picks a random joke from all matches. It first fetches page 1 with `limit=30`, the largest limit the API accepts. If `total_jokes` is larger than page 1, it picks an index over all matches and fetches the page that holds it.
+`Search` returns `ErrNoMatch` when `total_jokes` is 0. It also returns `ErrNoMatch` when the picked page comes back empty, which happens if the jokes change between the two requests. Any other error means the API failed: a network error, a timeout, an HTTP status other than 200, or a body that is not valid JSON.
 
-Callers tell the results apart like this:
+The API reports an unknown joke id as HTTP 200 with `"status":404` in the body. That only happens on `/j/{id}`, which the client does not call, so the client checks only the HTTP status.
 
-| Result | Meaning |
-|--------|---------|
-| `ErrNoMatch` | The search matched nothing. The API answers this with HTTP 200 and an empty list |
-| `*StatusError` | The API answered with a status other than 200 |
-| An error where `net.Error` reports `Timeout()` | The API did not answer within 5 seconds |
-| An error that matches `context.Canceled` | The caller's request was cancelled |
-
-The tests in `client_test.go` use a fake server that copies the API's JSON shapes. They replace the client's unexported `randIntN` field to get a fixed pick.
+The tests in `client_test.go` use a fake server that copies the API's JSON shapes.

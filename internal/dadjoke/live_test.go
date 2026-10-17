@@ -17,20 +17,12 @@ func TestLive(t *testing.T) {
 	c := New(DefaultBaseURL)
 	ctx := context.Background()
 
-	t.Run("Random", func(t *testing.T) {
-		joke, err := c.Random(ctx)
-		if err != nil || joke.ID == "" || joke.Text == "" {
-			t.Fatalf("Random() = %+v, %v", joke, err)
-		}
-		t.Logf("random: %s", joke.Text)
-	})
-
 	t.Run("SearchEmpty", func(t *testing.T) {
 		joke, err := c.Search(ctx, "")
-		if err != nil || joke.Text == "" {
-			t.Fatalf("Search(\"\") = %+v, %v", joke, err)
+		if err != nil || joke == "" {
+			t.Fatalf("Search(\"\") = %q, %v", joke, err)
 		}
-		t.Logf("empty search: %s", joke.Text)
+		t.Logf("empty search: %s", joke)
 	})
 
 	t.Run("SearchCat", func(t *testing.T) {
@@ -38,10 +30,10 @@ func TestLive(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Search(cat) error: %v", err)
 		}
-		if !strings.Contains(strings.ToLower(joke.Text), "cat") {
-			t.Errorf("Search(cat) = %q, want a joke that contains cat", joke.Text)
+		if !strings.Contains(strings.ToLower(joke), "cat") {
+			t.Errorf("Search(cat) = %q, want a joke that contains cat", joke)
 		}
-		t.Logf("cat: %s", joke.Text)
+		t.Logf("cat: %s", joke)
 	})
 
 	t.Run("SearchNoMatch", func(t *testing.T) {
